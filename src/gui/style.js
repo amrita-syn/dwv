@@ -43,7 +43,7 @@ dwv.html.Style = function ()
      * @private
      * @type Number
      */
-    var strokeWidth = 2;
+    var strokeWidth = 0.2;
 
     /**
      * Get the font family.
@@ -80,6 +80,12 @@ dwv.html.Style = function ()
      * @param {String} colour The line colour.
      */
     this.setLineColour = function (colour) { lineColour = colour; };
+    
+    /**
+     * Set the stroke width.
+     * @param {Number} change the stroke width.
+     */
+    this.setStrokeWidth = function (sw) { strokeWidth = sw; };
 
     /**
      * Set the display scale.
