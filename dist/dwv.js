@@ -1,4 +1,4 @@
-/*! dwv 0.25.2 2018-10-08 23:41:22 */
+/*! dwv 0.26.0-beta 2019-02-15 09:38:21 */
 // Inspired from umdjs
 // See https://github.com/umdjs/umd/blob/master/templates/returnExports.js
 (function (root, factory) {
@@ -1388,10 +1388,9 @@ dwv.App = function ()
     function handleAbort(error)
     {
         // log
-        if ( error.message ) {
+        if ( error && error.message ) {
             console.warn(error.message);
-        }
-        else {
+        } else {
             console.warn("Abort called.");
         }
         // stop progress
@@ -3599,7 +3598,7 @@ dwv.dicom = dwv.dicom || {};
  * Get the version of the library.
  * @return {String} The version of the library.
  */
-dwv.getVersion = function () { return "0.25.2"; };
+dwv.getVersion = function () { return "0.26.0-beta"; };
 
 /**
  * Clean string: trim and remove ending.
@@ -5787,15 +5786,33 @@ dwv.dicom.DicomWriter.prototype.getBuffer = function (dicomElements) {
     offset = metaWriter.writeDataElement(fmigl, offset, false);
     // write meta
     for ( var j = 0, lenj = metaElements.length; j < lenj; ++j ) {
+        dwv.dicom.checkUnkwownVR(metaElements[j]);
         offset = metaWriter.writeDataElement(metaElements[j], offset, false);
     }
     // write non meta
     for ( var k = 0, lenk = rawElements.length; k < lenk; ++k ) {
+        dwv.dicom.checkUnkwownVR(rawElements[k]);
         offset = dataWriter.writeDataElement(rawElements[k], offset, isImplicit);
     }
 
     // return
     return buffer;
+};
+
+/**
+ * Fix for broken DICOM elements: Replace "UN" with correct VR if the element exists in dictionary 
+ */
+dwv.dicom.checkUnkwownVR = function (element)
+{
+    var dict = dwv.dicom.dictionary;
+    if (element.vr == "UN") {
+        if ( typeof dict[element.tag.group] !== "undefined" && typeof dict[element.tag.group][element.tag.element] !== "undefined" ) {
+            if (element.vr != dict[element.tag.group][element.tag.element][0]) {
+                element.vr = dict[element.tag.group][element.tag.element][0];
+                console.log("Element " + element.tag.group + " " + element.tag.element +" VR changed from UN to " + element.vr);
+            }
+        }
+    }
 };
 
 /**
@@ -12897,7 +12914,7 @@ dwv.html.Style = function ()
      * @private
      * @type Number
      */
-    var strokeWidth = 2;
+    var strokeWidth = 0.2;
 
     /**
      * Get the font family.
@@ -12934,6 +12951,12 @@ dwv.html.Style = function ()
      * @param {String} colour The line colour.
      */
     this.setLineColour = function (colour) { lineColour = colour; };
+    
+    /**
+     * Set the stroke width.
+     * @param {Number} change the stroke width.
+     */
+    this.setStrokeWidth = function (sw) { strokeWidth = sw; };
 
     /**
      * Set the display scale.
@@ -16606,6 +16629,11 @@ dwv.image.View.prototype.getWindowLevelMinMax = function ()
     var min = range.min;
     var max = range.max;
     var width = max - min;
+    // full black / white images, defaults to 1.
+    if ( width < 1 ) {
+        console.warn("Zero or negative width, defaulting to one.");
+        width = 1;
+    }
     var center = min + width/2;
     return new dwv.image.WindowLevel(center, width);
 };
@@ -17765,6 +17793,12 @@ dwv.io.RawImageLoader = function ()
     var self = this;
 
     /**
+     * if abort is triggered, all image.onload callbacks have to be cancelled
+     * @type {boolean}
+     */
+    var aborted = false;
+
+    /**
      * Set the loader options.
      * @param {Object} opt The input options.
      */
@@ -17803,12 +17837,15 @@ dwv.io.RawImageLoader = function ()
      * @param {Number} index The data index.
      */
     this.load = function ( dataUri, origin, index ) {
+        aborted = false;
         // create a DOM image
         var image = new Image();
         // triggered by ctx.drawImage
         image.onload = function (/*event*/) {
             try {
-                self.onload( dwv.image.getViewFromDOMImage(this) );
+                if(!aborted){
+                    self.onload( dwv.image.getViewFromDOMImage(this) );
+                }
                 self.onloadend();
             } catch (error) {
                 self.onerror(error);
@@ -17826,6 +17863,7 @@ dwv.io.RawImageLoader = function ()
      * Abort load. TODO...
      */
     this.abort = function () {
+        aborted = true;
         self.onabort();
     };
 
@@ -18249,7 +18287,7 @@ dwv.io.UrlsLoader = function ()
         // abort requests
         for ( var i = 0; i < requests.length; ++i ) {
             // 0: UNSENT, 1: OPENED, 2: HEADERS_RECEIVED (send()), 3: LOADING, 4: DONE
-            if ( requests[i].readyState === 2 || requests[i].readyState === 3 ) {
+            if ( requests[i].readyState !== 4 ) {
                 requests[i].abort();
             }
         }
